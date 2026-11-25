@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using InventoryManagementAPI.Middlewares;
 using InventoryManagementAPI.Modules.Inventory.Services;
 using InventoryManagementAPI.Modules.Warehouse.Services;
+using InventoryManagementAPI.Common.Contracts;
 namespace InventoryManagementAPI
 {
     public class Program
@@ -24,7 +25,7 @@ namespace InventoryManagementAPI
             builder.Services.AddScoped<WarehouseTransferService>();
 
 
-
+            builder.Services.AddScoped<IStockAvailabilityReader>(sp => sp.GetRequiredService<WarehouseStockService>());
 
 
             // Add services to the container.

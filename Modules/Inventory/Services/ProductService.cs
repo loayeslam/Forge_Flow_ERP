@@ -1,17 +1,21 @@
-﻿using InventoryManagementAPI.Data;
+﻿using InventoryManagementAPI.Common.Contracts;
+using InventoryManagementAPI.Data;
+using InventoryManagementAPI.Exceptions;
+using InventoryManagementAPI.Modules.Inventory.DTOs;
+using InventoryManagementAPI.Modules.Inventory.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using InventoryManagementAPI.Exceptions;
-using InventoryManagementAPI.Modules.Inventory.Models;
 
 namespace InventoryManagementAPI.Modules.Inventory.Services
 {
     public class ProductService
     {
         private readonly InventoryManagementDbContext _context;
-        public ProductService(InventoryManagementDbContext context)
+        private readonly IStockAvailabilityReader _stockAvailabilityReader;
+        public ProductService(InventoryManagementDbContext context, IStockAvailabilityReader stockAvailabilityReader)
         {
             _context = context;
+            _stockAvailabilityReader = stockAvailabilityReader;
         }
 
         public async Task<Product?> GetProductById(int id)
@@ -44,7 +48,7 @@ namespace InventoryManagementAPI.Modules.Inventory.Services
             {
                 throw new BusinessExceptions("Minimum stock level cannot be negative");
             }
-            product.Quantity = 0;
+
             product.CreatedAt = DateTimeOffset.UtcNow;
 
             _context.Products.Add(product);
@@ -95,65 +99,6 @@ namespace InventoryManagementAPI.Modules.Inventory.Services
             await _context.SaveChangesAsync();
             return true;
         }
-
-        public async Task<bool> StockIn(int id, StockTransaction transaction)
-        {
-            var product = await _context.Products.FindAsync(id);
-
-            if (product == null)
-            {
-                return false;
-            }
-
-            if (transaction.Quantity <= 0)
-            {
-                throw new BusinessExceptions("Quantity must be greater than zero");
-            }
-
-            product.Quantity += transaction.Quantity;
-
-            transaction.ProductId = product.Id;
-            transaction.Type = StockTransactionType.StockIn;
-            transaction.CreatedAt = DateTimeOffset.UtcNow;
-
-            _context.StockTransactions.Add(transaction);
-
-            await _context.SaveChangesAsync();
-
-            return true;
-        }
-        public async Task<bool> StockOut(int id, StockTransaction transaction)
-        {
-            var product = await _context.Products.FindAsync(id);
-
-            if (product == null)
-            {
-                return false;
-            }
-
-            if (transaction.Quantity <= 0)
-            {
-                throw new BusinessExceptions("Quantity must be greater than zero");
-            }
-
-            if (transaction.Quantity > product.Quantity)
-            {
-                throw new BusinessExceptions("Insufficient stock");
-            }
-
-            product.Quantity -= transaction.Quantity;
-
-            transaction.ProductId = product.Id;
-            transaction.Type = StockTransactionType.StockOut;
-            transaction.CreatedAt = DateTimeOffset.UtcNow;
-
-            _context.StockTransactions.Add(transaction);
-
-            await _context.SaveChangesAsync();
-
-            return true;
-        }
-
         public async Task<IEnumerable<StockTransaction>?> GetTransactions(int id)
         {
             var product = await _context.Products.FindAsync(id);
@@ -167,11 +112,34 @@ namespace InventoryManagementAPI.Modules.Inventory.Services
                 .Where(t => t.ProductId == id)
                 .ToListAsync();
         }
-        public async Task<IEnumerable<Product>> GetLowStockProducts()
+        public async Task<IEnumerable<LowStockProductDto>> GetLowStockProducts()
         {
-            return await _context.Products
-                .Where(p => p.Quantity <= p.MinimumStockLevel)
-                .ToListAsync();
+            var products = await _context.Products.ToListAsync();
+
+            var productIds = products.Select(p => p.Id).ToList();
+
+            var availableQuantities =
+                await _stockAvailabilityReader.GetAvailableQuantitiesAsync(productIds);
+
+            var lowStockProducts = products
+                .Select(product =>
+                {
+                    availableQuantities.TryGetValue(
+                        product.Id,
+                        out var availableQuantity);
+
+                    return new LowStockProductDto
+                    {
+                        ProductId = product.Id,
+                        Name = product.Name,
+                        MinimumStockLevel = product.MinimumStockLevel,
+                        AvailableQuantity = availableQuantity
+                    };
+                })
+                .Where(p => p.AvailableQuantity <= p.MinimumStockLevel)
+                .ToList();
+
+            return lowStockProducts;
         }
     }
 }

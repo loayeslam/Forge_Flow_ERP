@@ -1,13 +1,15 @@
-﻿using InventoryManagementAPI.Data;
+﻿using InventoryManagementAPI.Common.Contracts;
+using InventoryManagementAPI.Data;
 using InventoryManagementAPI.Exceptions;
+using InventoryManagementAPI.Modules.Inventory.DTOs;
 using InventoryManagementAPI.Modules.Warehouse.DTOs.Stock;
 using InventoryManagementAPI.Modules.Warehouse.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage.Json;
+
 
 namespace InventoryManagementAPI.Modules.Warehouse.Services
 {
-    public class WarehouseStockService
+    public class WarehouseStockService : IStockAvailabilityReader
     {
         private readonly InventoryManagementDbContext _context;
         public WarehouseStockService(InventoryManagementDbContext context) {
@@ -31,6 +33,11 @@ namespace InventoryManagementAPI.Modules.Warehouse.Services
             var stock = await _context.WarehouseStocks
                 .FirstOrDefaultAsync(s =>
                 s.ProductId == dto.ProductId && s.LocationId == dto.LocationId && s.Status == dto.Status);
+
+            if(dto.Quantity <= 0)
+            {
+                throw new BusinessExceptions("Quantity must be greater than zero");
+            }
 
             int quantityBefore = 0;
 
@@ -217,6 +224,8 @@ namespace InventoryManagementAPI.Modules.Warehouse.Services
 
             if (dto.PhysicalQuantity < stock.ReservedQuantity)
                 throw new BusinessExceptions("Physical quantity cannot be less than reserved quantity.");
+            if (dto.PhysicalQuantity < 0)
+                throw new BusinessExceptions("Physical quantity cannot be negative");
 
             int quantityBefore = stock.Quantity;
 
@@ -248,10 +257,31 @@ namespace InventoryManagementAPI.Modules.Warehouse.Services
                 Quantity = stock.Quantity,
                 ReservedQuantity = stock.ReservedQuantity,
                 Status = stock.Status,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
+                CreatedAt = stock.CreatedAt,
+                UpdatedAt = stock.UpdatedAt
             };
 
+        }
+
+       
+        public async Task<Dictionary<int, int>> GetAvailableQuantitiesAsync(IReadOnlyCollection<int> productIds)
+        {
+            if (productIds.Count == 0)
+                return new Dictionary<int, int>();
+
+            return await _context.WarehouseStocks
+                .Where(s =>
+                    productIds.Contains(s.ProductId) &&
+                    s.Status == StockStatus.Available)
+                .GroupBy(s => s.ProductId)
+                .Select(g => new
+                {
+                    ProductId = g.Key,
+                    AvailableQuantity = g.Sum(s => s.Quantity - s.ReservedQuantity)
+                })
+                .ToDictionaryAsync(
+                    x => x.ProductId,
+                    x => x.AvailableQuantity);
         }
 
         public async Task<List<WarehouseStockMovementResponseDto>> GetStockMovementsAsync(int stockId)

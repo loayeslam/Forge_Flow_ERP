@@ -1,8 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using InventoryManagementAPI.Data;
-using Microsoft.EntityFrameworkCore;
-using System.Reflection.Metadata.Ecma335;
-using System.Collections.Generic;
 using InventoryManagementAPI.Modules.Inventory.Models;
 using InventoryManagementAPI.Modules.Inventory.DTOs;
 using InventoryManagementAPI.Modules.Inventory.Services;
@@ -84,7 +80,8 @@ namespace InventoryManagementAPI.Modules.Inventory.Controllers
 
 
             }
-            [HttpDelete("{id}")]
+
+        [HttpDelete("{id}")]
             public async Task<IActionResult> DeleteProduct(int id)
             {
                 var deleted = await _productService.DeleteProduct(id);
@@ -96,46 +93,7 @@ namespace InventoryManagementAPI.Modules.Inventory.Controllers
                 return NoContent();
 
             }
-        [HttpPost("{id}/stock/in")]
-        public async Task<IActionResult> StockIn(int id, StockTransactionDto transaction)
-        {
-           
-                var newTransaction = new StockTransaction
-                {
-                    Quantity = transaction.Quantity,
-                    Notes = transaction.Notes
-                };
-                var result = await _productService.StockIn(id, newTransaction);
-                if (!result)
-                {
-                    return NotFound();
-                }
-                return NoContent();
-
-           
-
-        }
-
-        [HttpPost("{id}/stock/out")]
-        public async Task<IActionResult> StockOut(int id, StockTransactionDto transaction)
-        {
-            
-                var newTransaction = new StockTransaction
-                {
-                    Quantity = transaction.Quantity,
-                    Notes = transaction.Notes
-                };
-                var result = await _productService.StockOut(id, newTransaction);
-
-                if (!result)
-                {
-                    return NotFound();
-                }
-
-                return NoContent();
-           
-        }
-
+       
        
         [HttpGet("{id}/transactions")]
         public async Task<ActionResult<IEnumerable<StockTransaction>>> GetTransactions(int id)
@@ -151,7 +109,7 @@ namespace InventoryManagementAPI.Modules.Inventory.Controllers
         }
 
         [HttpGet("low-stock")]
-        public async Task<ActionResult<IEnumerable<Product>>> GetLowStockProducts()
+        public async Task<ActionResult<IEnumerable<LowStockProductDto>>> GetLowStockProducts()
         {
             var products = await _productService.GetLowStockProducts();
 
